@@ -78,7 +78,7 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
         return false
       end
       
-      GCal4Ruby::Calendar.find(service, current_user.pref[:google_account]).first      
+      service.calendars.first
       
     end
     

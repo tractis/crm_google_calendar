@@ -1,0 +1,1 @@
+require "crm_google_calendar/crm_google_calendar_model_hooks"

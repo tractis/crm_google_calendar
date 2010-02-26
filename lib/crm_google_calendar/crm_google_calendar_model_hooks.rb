@@ -12,6 +12,10 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
       if cal = get_calendar
         if bucket == "specific_time"
           event = GCal4Ruby::Event.new(cal)
+          if assigned_to
+            attendee = User.find(assigned_to)
+            event.attendees = [{ :name => attendee.full_name, :email => attendee.email }]
+          end
           event.title = get_title
           event.start = due_at + 28800
           event.end = due_at + 32400
@@ -31,6 +35,10 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
           # Search for the event
           event = GCal4Ruby::Event.find(cal, title, {:scope => :first})
           unless event.blank?
+            if assigned_to
+              attendee = User.find(assigned_to)
+              event.attendees = [{ :name => attendee.full_name, :email => attendee.email }]
+            end            
             event.title = title
             event.start = due_at + 28800
             event.end = due_at + 32400
@@ -77,10 +85,15 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
     #----------------------------------------------------------------------------
     def get_title
         if asset_id.blank? 
-          "crm - #{name}"
+          "crm - #{get_category} - #{name}"
         else
-          "crm - #{name} (#{asset_type}: #{asset_type == "Contact" ? asset.full_name : asset.name})"
+          "crm - #{get_category} - #{name} (#{asset_type}: #{asset_type == "Contact" ? asset.full_name : asset.name})"
         end      
+    end
+ 
+    #----------------------------------------------------------------------------
+    def get_category
+      category == "" ? "other" : category
     end
     
   end

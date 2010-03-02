@@ -17,8 +17,8 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
             event.attendees = [{ :name => attendee.full_name, :email => attendee.email }]
           end
           event.title = get_title
-          event.start = due_at + 28800
-          event.end = due_at + 32400
+          event.start = get_event_start
+          event.end = get_event_end
           # TODO: Put the uri of the task: event.where = request.request_uri
           event.reminder = { :minutes => "15", :method => 'email' }
           event.save     
@@ -40,8 +40,8 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
               event.attendees = [{ :name => attendee.full_name, :email => attendee.email }]
             end            
             event.title = title
-            event.start = due_at + 28800
-            event.end = due_at + 32400
+            event.start = get_event_start
+            event.end = get_event_end
             # TODO: Put the uri of the task: event.where = request.request_uri
             event.reminder = { :minutes => "15", :method => 'email' }
             event.save
@@ -95,6 +95,16 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
     def get_category
       category == "" ? "other" : category
     end
+    
+    #----------------------------------------------------------------------------
+    def get_event_start
+      Setting.task_calendar_with_time == true ? due_at : due_at + 28800
+    end
+
+    #----------------------------------------------------------------------------
+    def get_event_end
+      Setting.task_calendar_with_time == true ? due_at : due_at + 32400
+    end    
     
   end
   

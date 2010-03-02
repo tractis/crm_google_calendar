@@ -103,7 +103,7 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
 
     #----------------------------------------------------------------------------
     def get_event_end
-      Setting.task_calendar_with_time == true ? due_at : due_at + 32400
+      Setting.task_calendar_with_time == true ? due_at + 3600 : due_at + 32400
     end    
     
   end

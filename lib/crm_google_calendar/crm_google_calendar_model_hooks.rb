@@ -17,6 +17,7 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
             event.attendees = [{ :name => attendee.full_name, :email => attendee.email }]
           end
           event.title = get_title
+          event.content = background_info unless background_info.blank?
           event.start = get_event_start
           event.end = get_event_end
           # TODO: Put the uri of the task: event.where = request.request_uri
@@ -40,6 +41,7 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
               event.attendees = [{ :name => attendee.full_name, :email => attendee.email }]
             end            
             event.title = title
+            event.content = background_info unless background_info.blank?
             event.start = get_event_start
             event.end = get_event_end
             # TODO: Put the uri of the task: event.where = request.request_uri

@@ -1,6 +1,8 @@
 Google Calendar integration plugin for Fat Free CRM
 ============
 
+Important: Needs Fat Free Crm >= 0.9.10
+
 Put/Edit/Delete events for tasks with due date
 
 This plugin needs http://github.com/tractis/crm_google_account_settings plugin to work, google account settings in user profile

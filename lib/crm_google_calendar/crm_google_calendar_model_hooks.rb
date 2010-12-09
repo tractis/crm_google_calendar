@@ -11,41 +11,33 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
     def create_gcalendar
       if cal = get_calendar
         if bucket == "specific_time"
-          event = GCal4Ruby::Event.new(cal)
-          if assigned_to
-            attendee = User.find(assigned_to)
-            event.attendees = [{ :name => attendee.full_name, :email => attendee.email }]
-          end
-          event.title = get_title
-          event.content = background_info unless background_info.blank?
-          event.start = get_event_start
-          event.end = get_event_end
-          # TODO: Put the uri of the task: event.where = request.request_uri
-          event.reminder = { :minutes => "15", :method => 'email' }
-          event.save     
+          event = GCal4Ruby::Event.new(cal.service, {:title => get_title, :calendar => cal})
+          set_event(event)
+          event.save
         end
       end
-    end    
+    end
+    
+    def set_event(event)
+      if assigned_to
+          attendee = User.find(assigned_to)
+          event.attendees = [{ :name => attendee.full_name, :email => attendee.email }] if attendee
+      end
+      event.content = background_info unless background_info.blank?
+      event.start_time = get_event_start
+      event.end_time = get_event_end
+      # TODO: Put the uri of the task: event.where = request.request_uri
+      event.reminder = [{ :minutes => "15", :method => 'email' }]
+    end
 
     #----------------------------------------------------------------------------
     def update_gcalendar
       if cal = get_calendar
-        if bucket == "specific_time"        
-          title = get_title
-          
-          # Search for the event
-          event = GCal4Ruby::Event.find(cal, title, {:scope => :first})
+        if bucket == "specific_time"
+          event = GCal4Ruby::Event.find(cal.service, get_title(name_was), {:calendar => cal.id}).first
           unless event.blank?
-            if assigned_to
-              attendee = User.find(assigned_to)
-              event.attendees = [{ :name => attendee.full_name, :email => attendee.email }]
-            end            
-            event.title = title
-            event.content = background_info unless background_info.blank?
-            event.start = get_event_start
-            event.end = get_event_end
-            # TODO: Put the uri of the task: event.where = request.request_uri
-            event.reminder = { :minutes => "15", :method => 'email' }
+            set_event(event)
+            event.title = get_title
             event.save
           else
             create_gcalendar
@@ -57,9 +49,8 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
     #----------------------------------------------------------------------------
     def destroy_gcalendar
       if cal = get_calendar
-        if bucket == "specific_time"  
-          # Search for the event
-          event = GCal4Ruby::Event.find(cal, get_title, {:scope => :first})
+        if bucket == "specific_time"
+          event = GCal4Ruby::Event.find(cal.service, get_title, {:calendar => cal.id}).first
           unless event.blank?
             event.delete
           end
@@ -69,28 +60,24 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
     
     #----------------------------------------------------------------------------
     def get_calendar
-      
       current_user = User.find(user_id)
-      
       service = GCal4Ruby::Service.new
-      
       begin
         service.authenticate(current_user.pref[:google_account], current_user.pref[:google_password])
-      rescue GCal4Ruby::HTTPPostFailed => ex
+      rescue GData4Ruby::HTTPRequestFailed => ex
         return false
       end
-      
       service.calendars.first
-      
     end
     
     #----------------------------------------------------------------------------
-    def get_title
-        if asset_id.blank? 
-          "crm - #{get_category} - #{name}"
-        else
-          "crm - #{get_category} - #{name} (#{asset_type}: #{asset_type == "Contact" ? asset.full_name : asset.name})"
-        end      
+    def get_title(title='')
+      title = name if title.blank?
+      if asset_id.blank? 
+        "crm - #{get_category} - #{title}"
+      else
+        "crm - #{get_category} - #{title} (#{asset_type}: #{asset_type == "Contact" ? asset.full_name : asset.name})"
+      end      
     end
  
     #----------------------------------------------------------------------------

@@ -1,5 +1,62 @@
 class TaskNotAllowedError < StandardError; end
 
+def get_calendar(user_id)
+  current_user = User.find(user_id)
+  service = GCal4Ruby::Service.new
+  begin
+    service.authenticate(current_user.pref[:google_account], current_user.pref[:google_password])
+  rescue GData4Ruby::HTTPRequestFailed => ex
+    return false
+  end
+  service.calendars.first
+end
+
+class CreateEventJob < Struct.new(:user_id, :options)
+  def perform
+    require "pp"
+    if cal = get_calendar(user_id)
+      event = GCal4Ruby::Event.new(cal.service, {:calendar => cal})
+      event.title = options[:title]
+      event.content = options[:content] || ''
+      event.attendees = options[:attendees]
+      event.start_time = options[:start_time]
+      event.end_time = options[:end_time]
+      event.all_day = options[:all_day]
+      event.reminder = options[:reminder]
+      event.save
+    end
+  end
+end
+
+class UpdateEventJob < Struct.new(:user_id, :title, :options)
+  def perform
+    if cal = get_calendar(user_id)
+      event = GCal4Ruby::Event.find(cal.service, title, {:calendar => cal.id}).first
+      unless event.blank?
+        event.title = options[:title]
+        event.content = options[:content] || ''
+        event.attendees = options[:attendees]
+        event.start_time = options[:start_time]
+        event.end_time = options[:end_time]
+        event.all_day = options[:all_day]
+        event.reminder = options[:reminder]
+        event.save
+      else        
+        Delayed::Job.enqueue CreateEventJob.new(user_id, options)
+      end
+    end
+  end
+end
+
+class DeleteEventJob < Struct.new(:user_id, :title)
+  def perform
+    if cal = get_calendar(user_id)
+      event = GCal4Ruby::Event.find(cal.service, title, {:calendar => cal.id}).first
+      event.delete unless event.blank?
+    end
+  end
+end
+
 class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
   
   Task.class_eval do
@@ -11,10 +68,18 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
     
     #----------------------------------------------------------------------------
     def create_gcalendar
-      if allowed? and cal = get_calendar
-        event = GCal4Ruby::Event.new(cal.service, {:title => get_title, :calendar => cal})
+      if allowed?
+        event = GCal4Ruby::Event.new(GCal4Ruby::Service.new, {:title => get_title})
         set_event(event)
-        event.save
+        Delayed::Job.enqueue CreateEventJob.new(user_id, {
+          :title => event.title,
+          :content => event.content || '',
+          :attendees => event.attendees,
+          :start_time => event.start_time,
+          :end_time => event.end_time,
+          :all_day => event.all_day,
+          :reminder => event.reminder
+        })
       end
     rescue TaskNotAllowedError
       logging.warn 'Task of bucket: #{bucket} not allowed for calendar.'
@@ -25,7 +90,7 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
     end
     
     def set_event(event)
-      
+
       if assigned_to
         attendee = User.find(assigned_to)
         event.attendees = [{ :name => attendee.full_name, :email => attendee.email }] if attendee
@@ -68,15 +133,18 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
 
     #----------------------------------------------------------------------------
     def update_gcalendar
-      if allowed? and cal = get_calendar
-        event = GCal4Ruby::Event.find(cal.service, get_title(name_was), {:calendar => cal.id}).first
-        unless event.blank?
-          set_event(event)
-          event.title = get_title
-          event.save
-        else
-          create_gcalendar
-        end    
+      if allowed?
+        event = GCal4Ruby::Event.new(GCal4Ruby::Service.new)
+        set_event(event)
+        Delayed::Job.enqueue UpdateEventJob.new(user_id, get_title(name_was), {
+          :title => get_title,
+          :content => event.content,
+          :attendees => event.attendees,
+          :start_time => event.start_time,
+          :end_time => event.end_time,
+          :all_day => event.all_day,
+          :reminder => event.reminder
+        })
       end
     rescue TaskNotAllowedError
       logging.warn 'Task of bucket: #{bucket} not allowed for calendar.'
@@ -84,24 +152,9 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
 
     #----------------------------------------------------------------------------
     def destroy_gcalendar
-      if allowed? and cal = get_calendar
-        event = GCal4Ruby::Event.find(cal.service, get_title, {:calendar => cal.id}).first
-        unless event.blank?
-          event.delete
-        end
+      if allowed?
+        Delayed::Job.enqueue DeleteEventJob.new(user_id, get_title)
       end
-    end    
-    
-    #----------------------------------------------------------------------------
-    def get_calendar
-      current_user = User.find(user_id)
-      service = GCal4Ruby::Service.new
-      begin
-        service.authenticate(current_user.pref[:google_account], current_user.pref[:google_password])
-      rescue GData4Ruby::HTTPRequestFailed => ex
-        return false
-      end
-      service.calendars.first
     end
     
     #----------------------------------------------------------------------------

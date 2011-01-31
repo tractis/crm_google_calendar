@@ -34,15 +34,19 @@ end
 
 class UpdateEventJob < EventJob
   def perform
-    if cal = get_calendar
+    if cal = get_calendar and options[:task_id]
       task = Task.find(options[:task_id])
-      event = GCal4Ruby::Event.find(cal.service, {:id => task.gcal_event_id})
-      if event
-        merge event, options
-        event.save
-        if event.save
-          task.gcal_event_id = event.id
-          task.send(:update_without_callbacks)
+      if task.gcal_event_id
+        event = GCal4Ruby::Event.find(cal.service, {:id => task.gcal_event_id})
+        if event
+          merge event, options
+          event.save
+          if event.save
+            task.gcal_event_id = event.id
+            task.send(:update_without_callbacks)
+          end
+        else
+          Delayed::Job.enqueue CreateEventJob.new(user_id, options)
         end
       else
         Delayed::Job.enqueue CreateEventJob.new(user_id, options)
@@ -53,7 +57,7 @@ end
 
 class DeleteEventJob < EventJob
   def perform
-    if cal = get_calendar
+    if cal = get_calendar and options[:event_id]
       event = GCal4Ruby::Event.find(cal.service, {:id => options[:event_id]})
       event.delete if event
     end

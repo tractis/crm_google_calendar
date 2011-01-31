@@ -13,7 +13,7 @@ class EventJob < Struct.new(:user_id, :options, :previous)
 
   def merge(event, options)
     options.each do |key, value|
-      event.send "#{key}=", value
+      event.send "#{key}=", value unless key.to_s == 'task_id'
     end
   end
 end
@@ -23,7 +23,11 @@ class CreateEventJob < EventJob
     if cal = get_calendar
       event = GCal4Ruby::Event.new(cal.service, {:calendar => cal})
       merge event, options
-      event.save
+      if event.save
+        task = Task.find(options[:task_id])
+        task.gcal_event_id = event.id
+        task.send(:update_without_callbacks)
+      end
     end
   end
 end
@@ -31,10 +35,15 @@ end
 class UpdateEventJob < EventJob
   def perform
     if cal = get_calendar
-      event = GCal4Ruby::Event.find(cal.service, previous, {:calendar => cal.id}).first
-      unless event.blank?
+      task = Task.find(options[:task_id])
+      event = GCal4Ruby::Event.find(cal.service, {:id => task.gcal_event_id})
+      if event
         merge event, options
         event.save
+        if event.save
+          task.gcal_event_id = event.id
+          task.send(:update_without_callbacks)
+        end
       else
         Delayed::Job.enqueue CreateEventJob.new(user_id, options)
       end
@@ -45,22 +54,22 @@ end
 class DeleteEventJob < EventJob
   def perform
     if cal = get_calendar
-      event = GCal4Ruby::Event.find(cal.service, options[:title], {:calendar => cal.id}).first
-      event.delete unless event.blank?
+      event = GCal4Ruby::Event.find(cal.service, {:id => options[:event_id]})
+      event.delete if event
     end
   end
 end
 
 class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
   Task.class_eval do
-    after_create  :create_gcalendar
-    after_update  :update_gcalendar
-    after_destroy :destroy_gcalendar
+    after_create  :create_event
+    after_update  :update_event
+    after_destroy :destroy_event
 
     require 'gcal4ruby'
 
     #----------------------------------------------------------------------------
-    def create_gcalendar
+    def create_event
       if allowed?
         event = GCal4Ruby::Event.new(GCal4Ruby::Service.new, {:title => get_title})
         set_event(event)
@@ -69,7 +78,7 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
     end
 
     #----------------------------------------------------------------------------
-    def update_gcalendar
+    def update_event
       if allowed?
         event = GCal4Ruby::Event.new(GCal4Ruby::Service.new)
         set_event(event)
@@ -80,9 +89,9 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
     end
 
     #----------------------------------------------------------------------------
-    def destroy_gcalendar
+    def destroy_event
       if allowed?
-        Delayed::Job.enqueue DeleteEventJob.new(user_id, {:title => get_title})
+        Delayed::Job.enqueue DeleteEventJob.new(user_id, {:event_id => self.gcal_event_id})
       end
     end
 
@@ -100,11 +109,11 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
 
       event.content = background_info unless background_info.blank?
 
-      event.all_day = true unless (bucket == 'overdue' and due_at) or bucket == 'specific_time'
+      event.all_day = true unless bucket == 'specific_time' or (due_at && bucket == 'overdue')
 
       event.start_time = case bucket
       when 'overdue'
-        due_at || now.mindnight.yesterday
+        due_at || Time.zone.now.mindnight.yesterday
       when 'due_today'
         Time.zone.now.midnight
       when 'due_tomorrow'
@@ -133,6 +142,7 @@ class CrmGoogleCalendarModelHooks < FatFreeCRM::Callback::Base
 
     def get_event_options(event)
       {
+        :task_id => self.id,
         :title => event.title,
         :content => event.content,
         :attendees => event.attendees,

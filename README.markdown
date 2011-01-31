@@ -16,12 +16,13 @@ Installation
 
 The plugin can be installed by running:
 
-    script/plugin install git://github.com/tractis/crm_google_account_settings.git
-    script/plugin install git://github.com/tractis/crm_google_calendar.git
+	script/plugin install git://github.com/tractis/crm_google_account_settings.git
+	script/plugin install git://github.com/tractis/crm_google_calendar.git
 	script/plugin install git://github.com/collectiveidea/delayed_job.git -r v2.0
-    sudo gem install gcal4ruby
+	sudo gem install gcal4ruby
 	script/generate delayed_job
 	rake db:migrate
+	rake db:migrate:plugin NAME=crm_google_calendar
 
 Choose how to run the delayed_jobs script:
 
